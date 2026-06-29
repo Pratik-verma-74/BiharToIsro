@@ -225,46 +225,49 @@ def export_all_artifacts():
     """Auto-generate required judging files into Google Drive workspace folders."""
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     
-    # Ensure target folders exist
-    processed_dir = os.path.join(base_dir, "Processed_Data")
-    models_dir = os.path.join(base_dir, "Models")
-    outputs_dir = os.path.join(base_dir, "Outputs")
-    
-    os.makedirs(processed_dir, exist_ok=True)
-    os.makedirs(models_dir, exist_ok=True)
-    os.makedirs(outputs_dir, exist_ok=True)
-    
-    # 1. Export urban_cooling_dataset.csv
-    csv_path = os.path.join(processed_dir, "urban_cooling_dataset.csv")
-    with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["ward_id", "ward_name", "zone", "lst_temp_c", "concrete_density_pct", "green_cover_pct", "soil_moisture_pct", "vulnerability_score", "population_density", "source_credit"])
-        for w in WARDS_DATA:
-            writer.writerow([w["id"], w["name"], w["zone"], w["lst_temp"], w["concrete_density"], w["green_cover"], w["soil_moisture"], w["vulnerability_score"], w["population_density"], "ISRO VEDAS / Microsoft Planetary Computer / WorldPop"])
-            
-    # 2. Export cooling_ai_model.pkl
-    pkl_path = os.path.join(models_dir, "cooling_ai_model.pkl")
-    model_payload = {
-        "team": "BiharToIsro",
-        "hackathon": "ISRO PS1 AI Urban Cooling Planner 2026",
-        "algorithm": "Physics-Informed Linear Model + Random Forest Ensemble",
-        "weights": {"c_roofs": 0.022, "c_perm": 0.016, "c_trees": 0.031, "c_refl": 0.025},
-        "status": "CALIBRATED_FOR_INDIAN_CLIMATE"
-    }
-    with open(pkl_path, mode="wb") as f:
-        pickle.dump(model_payload, f)
+    try:
+        # Ensure target folders exist
+        processed_dir = os.path.join(base_dir, "Processed_Data")
+        models_dir = os.path.join(base_dir, "Models")
+        outputs_dir = os.path.join(base_dir, "Outputs")
         
-    # 3. Export AI_Cooling_Action_Plan.csv
-    out_path = os.path.join(outputs_dir, "AI_Cooling_Action_Plan.csv")
-    with open(out_path, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["ward_id", "ward_name", "priority_level", "recommended_intervention", "estimated_budget_cr", "expected_lst_reduction_c"])
-        for w in WARDS_DATA:
-            # Simulate optimal action plan impact for each ward
-            sim = simulate_cooling_impact(30, 20, 35, 40)
-            writer.writerow([w["id"], w["name"], w["priority_level"], w["recommended_action"], w["est_budget_cr"], sim["temp_reduction_c"]])
+        os.makedirs(processed_dir, exist_ok=True)
+        os.makedirs(models_dir, exist_ok=True)
+        os.makedirs(outputs_dir, exist_ok=True)
+        
+        # 1. Export urban_cooling_dataset.csv
+        csv_path = os.path.join(processed_dir, "urban_cooling_dataset.csv")
+        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["ward_id", "ward_name", "zone", "lst_temp_c", "concrete_density_pct", "green_cover_pct", "soil_moisture_pct", "vulnerability_score", "population_density", "source_credit"])
+            for w in WARDS_DATA:
+                writer.writerow([w["id"], w["name"], w["zone"], w["lst_temp"], w["concrete_density"], w["green_cover"], w["soil_moisture"], w["vulnerability_score"], w["population_density"], "ISRO VEDAS / Microsoft Planetary Computer / WorldPop"])
+                
+        # 2. Export cooling_ai_model.pkl
+        pkl_path = os.path.join(models_dir, "cooling_ai_model.pkl")
+        model_payload = {
+            "team": "BiharToIsro",
+            "hackathon": "ISRO PS1 AI Urban Cooling Planner 2026",
+            "algorithm": "Physics-Informed Linear Model + Random Forest Ensemble",
+            "weights": {"c_roofs": 0.022, "c_perm": 0.016, "c_trees": 0.031, "c_refl": 0.025},
+            "status": "CALIBRATED_FOR_INDIAN_CLIMATE"
+        }
+        with open(pkl_path, mode="wb") as f:
+            pickle.dump(model_payload, f)
             
-    print("Team BiharToIsro: Successfully exported urban_cooling_dataset.csv, cooling_ai_model.pkl, and AI_Cooling_Action_Plan.csv!")
+        # 3. Export AI_Cooling_Action_Plan.csv
+        out_path = os.path.join(outputs_dir, "AI_Cooling_Action_Plan.csv")
+        with open(out_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["ward_id", "ward_name", "priority_level", "recommended_intervention", "estimated_budget_cr", "expected_lst_reduction_c"])
+            for w in WARDS_DATA:
+                # Simulate optimal action plan impact for each ward
+                sim = simulate_cooling_impact(30, 20, 35, 40)
+                writer.writerow([w["id"], w["name"], w["priority_level"], w["recommended_action"], w["est_budget_cr"], sim["temp_reduction_c"]])
+                
+        print("Team BiharToIsro: Successfully exported urban_cooling_dataset.csv, cooling_ai_model.pkl, and AI_Cooling_Action_Plan.csv!")
+    except Exception as e:
+        print(f"Read-only environment detected (Vercel/Serverless), skipping disk export: {e}")
 
 def ingest_new_wards(new_records):
     global WARDS_DATA

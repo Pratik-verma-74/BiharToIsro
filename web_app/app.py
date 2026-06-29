@@ -8,8 +8,11 @@ import urllib.request
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
-# Auto-generate required ISRO judging files on startup
-data_engine.export_all_artifacts()
+# Auto-generate required ISRO judging files on startup (safely handle read-only environments)
+try:
+    data_engine.export_all_artifacts()
+except Exception as e:
+    print(f"Skipping startup disk export in serverless environment: {e}")
 
 @app.route("/")
 def index():
