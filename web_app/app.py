@@ -1,12 +1,21 @@
+import sys
+import os
+
+# Add current directory to sys.path so serverless functions can find data_engine
+base_dir = os.path.dirname(os.path.abspath(__file__))
+if base_dir not in sys.path:
+    sys.path.append(base_dir)
+
 from flask import Flask, render_template, request, jsonify, send_file, make_response
 import data_engine
-import os
 import csv
 import io
 import json
 import urllib.request
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
+template_dir = os.path.join(base_dir, "templates")
+static_dir = os.path.join(base_dir, "static")
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 
 # Auto-generate required ISRO judging files on startup (safely handle read-only environments)
 try:
