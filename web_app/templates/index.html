@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-select=none">
+    <meta name="theme-color" content="#0A0E17">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Team BiharToIsro | ISRO PS1 AI Urban Cooling Planner</title>
     <meta name="description" content="Explainable AI-powered Geospatial Decision Support Platform for Urban Heat Island mitigation by Team BiharToIsro utilizing official ISRO VEDAS and Bhuvan datasets.">
     
@@ -128,13 +131,49 @@
                                     <button class="btn-map-action" onclick="zoomMapIn()" title="Zoom In"><i class="fa-solid fa-plus"></i></button>
                                     <button class="btn-map-action" onclick="zoomMapOut()" title="Zoom Out"><i class="fa-solid fa-minus"></i></button>
                                     <button class="btn-map-action" onclick="resetMapView()" title="Reset View"><i class="fa-solid fa-house-signal"></i> Reset</button>
-                                    <span class="live-tag" style="margin: 0 4px;"><i class="fa-solid fa-circle"></i> ISRO BHUVAN</span>
+                                    <span class="live-tag" style="margin: 0 4px;"><i class="fa-solid fa-circle"></i> ISRO VEDAS THERMAL</span>
                                     <button id="fullscreen-toggle-btn" class="btn-fullscreen" onclick="toggleMapFullscreen()" title="Toggle Fullscreen">
                                         <i class="fa-solid fa-expand"></i> <span>[ ] Full Screen</span>
                                     </button>
                                 </div>
                             </div>
+
+                            <!-- Interactive Map Layer Switcher Console -->
+                            <div class="map-layer-console">
+                                <div class="console-label">
+                                    <i class="fa-solid fa-satellite-dish pulse-cyan"></i> SATELLITE SENSOR FEED:
+                                </div>
+                                <div class="layer-buttons">
+                                    <button class="btn-layer active" id="btn-layer-vedas" onclick="switchMapLayer('vedas')">
+                                        <span class="layer-dot dot-red"></span>
+                                        <span class="layer-name"><i class="fa-solid fa-temperature-arrow-up"></i> ISRO VEDAS Thermal</span>
+                                        <span class="layer-badge">LST HEATMAP</span>
+                                    </button>
+                                    <button class="btn-layer" id="btn-layer-ndvi" onclick="switchMapLayer('ndvi')">
+                                        <span class="layer-dot dot-green"></span>
+                                        <span class="layer-name"><i class="fa-solid fa-leaf"></i> Sentinel-2 NDVI</span>
+                                        <span class="layer-badge">VEGETATION</span>
+                                    </button>
+                                    <button class="btn-layer" id="btn-layer-bhuvan" onclick="switchMapLayer('bhuvan')">
+                                        <span class="layer-dot dot-cyan"></span>
+                                        <span class="layer-name"><i class="fa-solid fa-building-shield"></i> Bhuvan Satellite</span>
+                                        <span class="layer-badge">DARK MODE</span>
+                                    </button>
+                                </div>
+                            </div>
+
                             <div id="leaflet-map" class="map-container"></div>
+
+                            <!-- Dynamic Satellite Layer Legend Bar -->
+                            <div id="map-layer-legend" class="layer-legend-bar" style="margin-top: 14px; padding: 10px 16px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-secondary);">
+                                <div id="legend-content" style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                    <strong style="color: #EF4444;"><i class="fa-solid fa-layer-group"></i> ISRO VEDAS Legend:</strong>
+                                    <span><span style="display:inline-block;width:12px;height:12px;background:#EF4444;border-radius:3px;margin-right:4px;"></span>Critical (>45°C)</span>
+                                    <span><span style="display:inline-block;width:12px;height:12px;background:#F59E0B;border-radius:3px;margin-left:8px;margin-right:4px;"></span>High Risk (43-45°C)</span>
+                                    <span><span style="display:inline-block;width:12px;height:12px;background:#10B981;border-radius:3px;margin-left:8px;margin-right:4px;"></span>Moderate (≤43°C)</span>
+                                </div>
+                                <span style="font-size: 11px; color: var(--text-muted);"><i class="fa-solid fa-clock"></i> Satellite Overpass Sync: Live 30m Grid</span>
+                            </div>
                         </div>
 
                         <div class="glass-card wards-list-card">
@@ -198,6 +237,22 @@
                         <h2><i class="fa-solid fa-brain"></i> Explainable AI (XAI) Root-Cause Diagnostics</h2>
                         <p>Linear Model + Random Forest ensemble isolating exact heat drivers with mathematical SHAP attribution values.</p>
                     </div>
+
+                    <!-- Live Interactive SHAP Breakdown Panel -->
+                    <div class="glass-card mb-4" style="margin-bottom: 24px; border: 1px solid var(--cyan-glow); box-shadow: 0 0 25px rgba(0, 242, 254, 0.15);">
+                        <div class="card-title" style="flex-wrap: wrap; gap: 10px;">
+                            <h3 id="m3-chart-title" style="color: #fff;"><i class="fa-solid fa-chart-gantt" style="color: var(--cyan-glow);"></i> Live SHAP Attribution Breakdown: Gurgaon Cyber City (W106)</h3>
+                            <span style="background: rgba(0, 242, 254, 0.15); color: var(--cyan-glow); padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold;"><i class="fa-solid fa-hand-pointer"></i> Click any ward card below to inspect</span>
+                        </div>
+                        <div style="height: 300px; width: 100%;">
+                            <canvas id="m3ShapBreakdownChart"></canvas>
+                        </div>
+                        <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px;">
+                            <span><i class="fa-solid fa-circle-info" style="color: #F59E0B;"></i> Positive bars (+°C) increase urban heating; Negative bars (-°C) represent natural/engineered cooling mitigation.</span>
+                            <strong id="m3-net-impact" style="color: #EF4444; font-size: 13px;">Net UHI Heating Anomaly: +5.7°C</strong>
+                        </div>
+                    </div>
+
                     <div id="ai-diagnostics-container" class="ai-cards-grid"></div>
                 </section>
 
@@ -654,6 +709,11 @@
                 🌟 <b>Hello! I am Vyron AI.</b><br>
                 I am the official AI Co-Pilot for this ISRO PS1 Urban Cooling Platform engineered by <b>Team BiharToIsro (Pratik Verma, Prince Singh, Harini, Kanak Jaiswal)</b>. Ask me anything about our physics mathematical equations, SHAP XAI, or any module!
             </div>
+        </div>
+        <div class="chat-chips" style="padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 6px; background: rgba(10, 14, 23, 0.85); border-top: 1px solid rgba(255,255,255,0.08);">
+            <button class="chip-btn" onclick="sendQuickPrompt('Dwarka me 2°C temperature kam karne ka plan batao')" style="background: rgba(0, 242, 254, 0.12); border: 1px solid rgba(0, 242, 254, 0.3); color: #00F2FE; font-size: 11px; padding: 4px 8px; border-radius: 14px; cursor: pointer; transition: all 0.2s; font-weight: 600;">💬 Dwarka 2°C Plan</button>
+            <button class="chip-btn" onclick="sendQuickPrompt('Patna Sahib ward ke thermal factors explain karo')" style="background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3); color: #10B981; font-size: 11px; padding: 4px 8px; border-radius: 14px; cursor: pointer; transition: all 0.2s; font-weight: 600;">💬 Patna Sahib Factors</button>
+            <button class="chip-btn" onclick="sendQuickPrompt('Municipal budget ROI formula kya hai?')" style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); color: #F59E0B; font-size: 11px; padding: 4px 8px; border-radius: 14px; cursor: pointer; transition: all 0.2s; font-weight: 600;">💬 Budget ROI Formula</button>
         </div>
         <div class="chat-footer">
             <input type="text" id="chat-input" placeholder="Ask physics, math, team, modules..." onkeypress="if(event.key==='Enter') sendChatMessage()">

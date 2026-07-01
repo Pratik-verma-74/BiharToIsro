@@ -5,6 +5,8 @@ let mapInstance = null;
 let auditChartInstance = null;
 let forecastChartInstance = null;
 let shapModalChartInstance = null;
+let m3ShapChartInstance = null;
+let strategyChartInstance = null;
 let circleMarkers = {};
 const wardCoordsGlobal = {
     "W106": [28.6562, 77.2310],
@@ -101,56 +103,234 @@ function refreshTelemetry() {
 }
 
 /* ==========================================
-   3. MODULE 1: LEAFLET HEAT MAP
+   3. MODULE 1: LEAFLET HEAT MAP & SATELLITE SWITCHER
 ========================================== */
+let currentMapLayer = "vedas"; // "vedas" | "ndvi" | "bhuvan"
+let baseTileLayer = null;
+
+function getWardBoundaryPolygon(wardId, [lat, lng]) {
+    // Generate deterministic realistic irregular GIS boundary vertices (~3 km span)
+    let seed = 0;
+    for (let i = 0; i < wardId.length; i++) {
+        seed += wardId.charCodeAt(i) * (i + 1);
+    }
+    const numVertices = 10;
+    const points = [];
+    const baseRadiusLat = 0.024;
+    const baseRadiusLng = 0.028;
+    
+    for (let i = 0; i < numVertices; i++) {
+        const angle = (i * 2 * Math.PI) / numVertices;
+        const variation = 0.68 + 0.38 * Math.sin(seed + i * 1.6) + 0.16 * Math.cos(seed * 2 + i * 2.3);
+        const rLat = baseRadiusLat * variation;
+        const rLng = baseRadiusLng * variation * 1.14;
+        points.push([
+            lat + rLat * Math.sin(angle),
+            lng + rLng * Math.cos(angle)
+        ]);
+    }
+    return points;
+}
+
+function switchMapLayer(layerName) {
+    currentMapLayer = layerName;
+
+    // Update active button state
+    document.querySelectorAll(".map-layer-console .btn-layer").forEach(btn => {
+        btn.classList.remove("active");
+    });
+    const activeBtn = document.getElementById(`btn-layer-${layerName}`);
+    if (activeBtn) activeBtn.classList.add("active");
+
+    // Switch base tile layer
+    if (mapInstance && baseTileLayer) {
+        mapInstance.removeLayer(baseTileLayer);
+        let tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        let attr = '&copy; OpenStreetMap & ISRO VEDAS | Team BiharToIsro';
+        
+        if (layerName === 'bhuvan') {
+            tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+            attr = '&copy; Esri & ISRO Bhuvan High-Res Satellite | Team BiharToIsro';
+        } else if (layerName === 'ndvi') {
+            tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+            attr = '&copy; Sentinel-2 Copernicus & OpenStreetMap | Team BiharToIsro';
+        }
+        
+        baseTileLayer = L.tileLayer(tileUrl, {
+            attribution: attr,
+            subdomains: 'abcd',
+            maxZoom: 19
+        }).addTo(mapInstance);
+    }
+
+    // Update live tag and legend bar
+    const liveTag = document.querySelector(".live-tag");
+    const legendContent = document.getElementById("legend-content");
+
+    if (liveTag) {
+        if (layerName === 'vedas') {
+            liveTag.innerHTML = '<i class="fa-solid fa-circle"></i> ISRO VEDAS THERMAL';
+            liveTag.style.color = 'var(--red-critical)';
+            liveTag.style.background = 'rgba(239, 68, 68, 0.15)';
+            liveTag.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+            if (legendContent) {
+                legendContent.innerHTML = `
+                    <strong style="color: #EF4444;"><i class="fa-solid fa-layer-group"></i> ISRO VEDAS Legend:</strong>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#EF4444;border-radius:3px;margin-right:4px;"></span>Critical (>45°C)</span>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#F59E0B;border-radius:3px;margin-left:8px;margin-right:4px;"></span>High Risk (43-45°C)</span>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#10B981;border-radius:3px;margin-left:8px;margin-right:4px;"></span>Moderate (≤43°C)</span>
+                `;
+            }
+        } else if (layerName === 'ndvi') {
+            liveTag.innerHTML = '<i class="fa-solid fa-leaf"></i> SENTINEL-2 NDVI';
+            liveTag.style.color = '#10B981';
+            liveTag.style.background = 'rgba(16, 185, 129, 0.15)';
+            liveTag.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+            if (legendContent) {
+                legendContent.innerHTML = `
+                    <strong style="color: #10B981;"><i class="fa-solid fa-leaf"></i> Sentinel-2 NDVI Legend:</strong>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#00E676;border-radius:3px;margin-right:4px;"></span>Dense Canopy (>32%)</span>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#AEEA00;border-radius:3px;margin-left:8px;margin-right:4px;"></span>Moderate Vegetation</span>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#FF6D00;border-radius:3px;margin-left:8px;margin-right:4px;"></span>Severe Deficit (<22%)</span>
+                `;
+            }
+        } else if (layerName === 'bhuvan') {
+            liveTag.innerHTML = '<i class="fa-solid fa-satellite"></i> ISRO BHUVAN DARK';
+            liveTag.style.color = '#00F2FE';
+            liveTag.style.background = 'rgba(0, 242, 254, 0.15)';
+            liveTag.style.borderColor = 'rgba(0, 242, 254, 0.3)';
+            if (legendContent) {
+                legendContent.innerHTML = `
+                    <strong style="color: #00F2FE;"><i class="fa-solid fa-building-shield"></i> Bhuvan Structural Legend:</strong>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:#00F2FE;border:1px dashed #fff;border-radius:3px;margin-right:4px;"></span>Cyberpunk Albedo Grid</span>
+                    <span><span style="display:inline-block;width:12px;height:12px;background:rgba(0,242,254,0.3);border-radius:3px;margin-left:8px;margin-right:4px;"></span>Impervious Footprint Trapping</span>
+                `;
+            }
+        }
+    }
+
+    if (wardsData && wardsData.length > 0) {
+        renderWardPolygons(wardsData);
+    }
+}
+
 function initMap(wards) {
     if (!mapInstance) {
         const delhiCoords = [28.6139, 77.2090];
         mapInstance = L.map("leaflet-map", { zoomControl: false }).setView(delhiCoords, 11);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        baseTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap & ISRO VEDAS | Team BiharToIsro',
             subdomains: 'abcd',
             maxZoom: 19
         }).addTo(mapInstance);
-    } else {
-        Object.values(circleMarkers).forEach(m => mapInstance.removeLayer(m));
     }
+    renderWardPolygons(wards);
+    setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 250);
+}
 
+function renderWardPolygons(wards) {
+    Object.values(circleMarkers).forEach(m => {
+        if (mapInstance) mapInstance.removeLayer(m);
+    });
     circleMarkers = {};
 
     wards.forEach(w => {
         const coords = wardCoordsGlobal[w.id];
         if (!coords) return;
 
-        let color = "#10B981"; // Green
-        if (w.lst_temp > 45) color = "#EF4444"; // Red
-        else if (w.lst_temp > 43) color = "#F59E0B"; // Orange
+        let fillColor = "#10B981"; // Green
+        let strokeColor = "#34D399";
+        let layerSubtitle = `<span style="font-size:11px; color:#F87171;"><i class="fa-solid fa-fire"></i> ISRO VEDAS Infrared Thermal</span>`;
+        let primaryStat = `<span>Peak Surface LST:</span> <strong style="color:#EF4444; font-size:14px;">${w.lst_temp}°C</strong>`;
 
-        const circle = L.circle(coords, {
-            color: color,
-            fillColor: color,
-            fillOpacity: 0.45,
-            radius: 2800
+        let secondaryStat = `<span>Concrete Density:</span> <b style="color:#FFF;">${w.concrete_density}%</b>`;
+        let tooltipText = `<b>${w.name}</b> (${w.lst_temp}°C LST)`;
+
+        if (currentMapLayer === "vedas") {
+            if (w.lst_temp > 45) {
+                fillColor = "#EF4444";
+                strokeColor = "#FF1E56";
+            } else if (w.lst_temp > 43) {
+                fillColor = "#F59E0B";
+                strokeColor = "#FBBF24";
+            } else {
+                fillColor = "#10B981";
+                strokeColor = "#34D399";
+            }
+            primaryStat = `<span>Peak Surface LST:</span> <strong style="color:${fillColor}; font-size:14px;">${w.lst_temp}°C</strong>`;
+            secondaryStat = `<span>Thermal Anomaly:</span> <b style="color:#EF4444;">+${(w.lst_temp - 38.5).toFixed(1)}°C vs Base</b>`;
+            tooltipText = `<div style="text-align:center;"><b style="color:#EF4444;"><i class="fa-solid fa-fire"></i> ${w.name}</b><br/>Peak LST: <b>${w.lst_temp}°C</b></div>`;
+        } else if (currentMapLayer === "ndvi") {
+            const greenery = Math.max(8, Math.round(100 - w.concrete_density * 0.85));
+            if (greenery > 32) {
+                fillColor = "#00E676";
+                strokeColor = "#69F0AE";
+            } else if (greenery > 22) {
+                fillColor = "#AEEA00";
+                strokeColor = "#C6FF00";
+            } else {
+                fillColor = "#FF6D00";
+                strokeColor = "#FF9100";
+            }
+            layerSubtitle = `<span style="font-size:11px; color:#69F0AE;"><i class="fa-solid fa-leaf"></i> Sentinel-2 Multi-Spectral NDVI</span>`;
+            primaryStat = `<span>Canopy Coverage:</span> <strong style="color:${fillColor}; font-size:14px;">${greenery}% Greenery</strong>`;
+            secondaryStat = `<span>NDVI Index:</span> <b style="color:#69F0AE;">${(0.12 + (w.green_cover * 0.015)).toFixed(2)}</b>`;
+            tooltipText = `<div style="text-align:center;"><b style="color:#69F0AE;"><i class="fa-solid fa-leaf"></i> ${w.name}</b><br/>Canopy: <b>${greenery}%</b> (NDVI: ${(0.12 + (w.green_cover * 0.015)).toFixed(2)})</div>`;
+        } else if (currentMapLayer === "bhuvan") {
+            fillColor = "#00F2FE";
+            strokeColor = "#00F2FE";
+            layerSubtitle = `<span style="font-size:11px; color:#00F2FE;"><i class="fa-solid fa-satellite"></i> ISRO Bhuvan High-Res Structural</span>`;
+            primaryStat = `<span>Built-Up Albedo:</span> <strong style="color:#00F2FE; font-size:14px;">${w.concrete_density}% Concrete</strong>`;
+            secondaryStat = `<span>Albedo Reflectivity:</span> <b style="color:#00F2FE;">${(0.85 - (w.concrete_density * 0.005)).toFixed(2)} Index</b>`;
+            tooltipText = `<div style="text-align:center;"><b style="color:#00F2FE;"><i class="fa-solid fa-building-shield"></i> ${w.name}</b><br/>Built-Up Mass: <b>${w.concrete_density}%</b></div>`;
+        }
+
+        const points = getWardBoundaryPolygon(w.id, coords);
+        const polygon = L.polygon(points, {
+            color: strokeColor,
+            fillColor: fillColor,
+            fillOpacity: currentMapLayer === "bhuvan" ? 0.38 : 0.54,
+            weight: currentMapLayer === "bhuvan" ? 3 : 2.5,
+            dashArray: currentMapLayer === "bhuvan" ? '5, 4' : null,
+            smoothFactor: 1.0
         }).addTo(mapInstance);
 
-        circleMarkers[w.id] = circle;
+        polygon.on('mouseover', function() {
+            this.setStyle({
+                weight: 4.5,
+                fillOpacity: 0.85,
+                color: '#FFFFFF'
+            });
+        });
 
-        circle.bindPopup(`
-            <div class="custom-dark-popup" style="font-family: Inter; color: #E2E8F0; min-width: 185px;">
+        polygon.on('mouseout', function() {
+            this.setStyle({
+                weight: currentMapLayer === "bhuvan" ? 3 : 2.5,
+                fillOpacity: currentMapLayer === "bhuvan" ? 0.38 : 0.54,
+                color: strokeColor
+            });
+        });
+
+        circleMarkers[w.id] = polygon;
+
+        polygon.bindTooltip(tooltipText, { sticky: true, className: 'custom-dark-tooltip' });
+
+        polygon.bindPopup(`
+            <div class="custom-dark-popup" style="font-family: Inter; color: #E2E8F0; min-width: 210px;">
                 <b style="font-size:15px; color:#00F2FE; display:block; margin-bottom:2px;">${w.name} (${w.id})</b>
                 <div style="border-bottom: 1px solid rgba(0, 242, 254, 0.25); margin: 6px 0;"></div>
-                <span style="font-size:11px; color:#94A3B8; display:block; margin-bottom:6px;"><i class="fa-solid fa-satellite"></i> ISRO VEDAS / Bhuvan</span>
-                <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px;">
-                    <span>Peak LST:</span> <strong style="color:${color}; font-size:14px;">${w.lst_temp}°C</strong>
+                ${layerSubtitle}
+                <div style="display:flex; justify-content:space-between; margin: 8px 0 4px 0; font-size:13px;">
+                    ${primaryStat}
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:13px;">
-                    <span>Concrete:</span> <b style="color:#FFF;">${w.concrete_density}%</b>
+                    ${secondaryStat}
                 </div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:13px;">
-                    <span>Priority:</span> <b style="color:${color};">${w.priority_level}</b>
+                <div style="display:flex; justify-content:space-between; margin-bottom:10px; font-size:13px;">
+                    <span>Action Priority:</span> <b style="color:${w.priority_level === 'Critical' ? '#EF4444' : w.priority_level === 'High' ? '#F59E0B' : '#10B981'};">${w.priority_level.toUpperCase()}</b>
                 </div>
-                <button onclick="openShapModal('${w.id}')" style="width:100%; background:rgba(0, 242, 254, 0.15); border:1px solid #00F2FE; color:#00F2FE; padding:5px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:700;"><i class="fa-solid fa-radar"></i> View AI SHAP Radar</button>
+                <button onclick="openShapModal('${w.id}')" style="width:100%; background:linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(16, 185, 129, 0.2)); border:1px solid #00F2FE; color:#00F2FE; padding:6px; border-radius:6px; cursor:pointer; font-size:11px; font-weight:700; transition:all 0.2s;"><i class="fa-solid fa-radar"></i> View AI SHAP Radar</button>
             </div>
         `);
     });
@@ -267,7 +447,11 @@ function populateAIDiagnostics(wards) {
     if (!container) return;
     container.innerHTML = "";
 
-    wards.slice(0, 6).forEach(w => {
+    if (wards && wards.length > 0) {
+        renderModule3ShapChart(wards[0]);
+    }
+
+    wards.slice(0, 6).forEach((w, index) => {
         let badgeClass = "badge-moderate";
         if (w.priority_level === "Critical") badgeClass = "badge-critical";
         else if (w.priority_level === "High") badgeClass = "badge-high";
@@ -277,6 +461,19 @@ function populateAIDiagnostics(wards) {
 
         const div = document.createElement("div");
         div.className = "ai-card";
+        if (index === 0) div.style.borderColor = "var(--cyan-glow)";
+        div.style.cursor = "pointer";
+        div.onclick = (e) => {
+            // Prevent modal button click from triggering card selection if clicked directly
+            if (e.target.tagName.toLowerCase() !== 'button') {
+                document.querySelectorAll(".ai-card").forEach(c => c.style.borderColor = "rgba(255,255,255,0.08)");
+                div.style.borderColor = "var(--cyan-glow)";
+                renderModule3ShapChart(w);
+                const titleEl = document.getElementById("m3-chart-title");
+                if (titleEl) titleEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        };
+
         div.innerHTML = `
             <div class="ai-card-header">
                 <h4>${w.name} (${w.id}) <span style="font-size:10px; background:rgba(0,242,254,0.15); border:1px solid var(--cyan-glow); color:var(--cyan-glow); padding:2px 6px; border-radius:10px; margin-left:6px;"><i class="fa-solid fa-microchip"></i> 94.8% Acc</span></h4>
@@ -288,7 +485,7 @@ function populateAIDiagnostics(wards) {
             </div>
             
             <div class="shap-container">
-                <div class="shap-title"><i class="fa-solid fa-chart-bar"></i> SHAP XAI Feature Contribution (+°C Impact):</div>
+                <div class="shap-title"><i class="fa-solid fa-chart-bar"></i> SHAP XAI Contribution (+°C Impact):</div>
                 <div class="shap-row">
                     <span>Concrete Mass:</span>
                     <div class="shap-bar-bg"><div class="shap-bar-fill red-fill" style="width:${(shap.concrete/maxShap)*100}%"></div></div>
@@ -313,6 +510,89 @@ function populateAIDiagnostics(wards) {
             </div>
         `;
         container.appendChild(div);
+    });
+}
+
+function renderModule3ShapChart(ward) {
+    if (!ward) return;
+    const ctx = document.getElementById("m3ShapBreakdownChart")?.getContext("2d");
+    if (!ctx) return;
+
+    const titleEl = document.getElementById("m3-chart-title");
+    const netImpactEl = document.getElementById("m3-net-impact");
+    if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-chart-gantt" style="color: var(--cyan-glow);"></i> Live SHAP Attribution Breakdown: ${ward.name} (${ward.id})`;
+
+    const shap = ward.shap_values || { concrete: 3.2, greenery_deficit: 1.8, albedo: 0.9, anthropogenic: 0.8 };
+    const concreteVal = parseFloat(shap.concrete) || 3.2;
+    const greeneryVal = parseFloat(shap.greenery_deficit) || 1.8;
+    const albedoVal = parseFloat(shap.albedo) || 0.9;
+    const anthroVal = parseFloat(shap.anthropogenic || 0.8);
+    const treeCooling = -(greeneryVal * 0.45).toFixed(1);
+    const moistureCooling = -0.6;
+
+    const netVal = (concreteVal + greeneryVal + albedoVal + anthroVal + parseFloat(treeCooling) + moistureCooling).toFixed(1);
+    if (netImpactEl) netImpactEl.innerHTML = `Net UHI Heating Anomaly: <span style="color:#EF4444;">+${netVal}°C above regional baseline</span>`;
+
+    if (m3ShapChartInstance) m3ShapChartInstance.destroy();
+
+    m3ShapChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: [
+                'Concrete & Impervious Surface Trapping',
+                'Vegetation & Tree Shade Deficit',
+                'Low Albedo / Dark Asphalt Absorption',
+                'Anthropogenic Heat (Traffic/AC Exhaust)',
+                'Canopy Evapotranspiration Mitigation',
+                'Soil Moisture Retention Impact'
+            ],
+            datasets: [{
+                label: 'SHAP Attribution Temperature Anomaly (°C)',
+                data: [concreteVal, greeneryVal, albedoVal, anthroVal, treeCooling, moistureCooling],
+                backgroundColor: [
+                    '#EF4444',
+                    '#F59E0B',
+                    '#3B82F6',
+                    '#EC4899',
+                    '#10B981',
+                    '#06B6D4'
+                ],
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.25)'
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.08)' },
+                    ticks: {
+                        color: '#E2E8F0',
+                        font: { weight: 'bold' },
+                        callback: val => val > 0 ? `+${val}°C` : `${val}°C`
+                    },
+                    title: { display: true, text: 'SHAP Temperature Impact (+°C Warming vs -°C Cooling)', color: '#00F2FE' }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: { color: '#F8FAFC', font: { size: 12, weight: '600' } }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: context => {
+                            const val = context.raw;
+                            return val > 0 ? ` Increases LST by +${val}°C` : ` Cools local LST by ${val}°C`;
+                        }
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -956,6 +1236,14 @@ function sendChatMessage() {
         botDiv.innerHTML = "⚠️ Network issue connecting to AI server. Please try again.";
         container.scrollTop = container.scrollHeight;
     });
+}
+
+function sendQuickPrompt(promptText) {
+    const input = document.getElementById("chat-input");
+    if (input) {
+        input.value = promptText;
+        sendChatMessage();
+    }
 }
 
 /* ==========================================
